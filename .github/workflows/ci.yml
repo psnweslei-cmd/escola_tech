@@ -33,9 +33,9 @@ jobs:
     - name: Copiar o código do repositório
       uses: actions/checkout@v3
 
-    # 2. Configura o ambiente com o Node.js na versão 18
+    # 2. Configura o ambiente com o Node.js na versão 18 (Corrigido aqui!)
     - name: Configurar o Node.js
-      uses: actions/network/setup-node@v3
+      uses: actions/setup-node@v3
       with:
         node-version: 18
         cache: 'npm'
