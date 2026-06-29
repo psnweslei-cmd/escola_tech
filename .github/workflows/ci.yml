@@ -1,0 +1,51 @@
+name: Node.js CI/CD - Escola Tech
+
+# O fluxo será disparado automaticamente a cada 'push' ou 'pull request' na branch main
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # Criação do banco de dados PostgreSQL em um contêiner Docker na nuvem para os testes
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: admin
+          POSTGRES_DB: escolatech_db
+          POSTGRES_PASSWORD: senha123
+        ports:
+          - 5433:5432
+        # Garante que o Postgres esteja totalmente pronto antes de iniciar os testes
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    # 1. Baixa o código do repositório para o servidor do GitHub
+    - name: Copiar o código do repositório
+      uses: actions/checkout@v3
+
+    # 2. Configura o ambiente com o Node.js na versão 18
+    - name: Configurar o Node.js
+      uses: actions/network/setup-node@v3
+      with:
+        node-version: 18
+        cache: 'npm'
+
+    # 3. Instala todas as dependências do projeto (Express, PG, Jest, Supertest)
+    - name: Instalar dependências
+      run: npm install
+
+    # 4. Executa a nossa suite de testes automatizados
+    - name: Executar testes unitários (Jest)
+      run: npm run test
+      env:
+        NODE_ENV: test
