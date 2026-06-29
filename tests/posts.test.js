@@ -2,7 +2,6 @@ const request = require('supertest');
 const express = require('express');
 const { Pool } = require('pg');
 
-// Criamos uma instância isolada do Express idêntica ao nosso server.js para o Jest testar
 const app = express();
 app.use(express.json());
 
@@ -14,7 +13,7 @@ const pool = new Pool({
   port: 5433,
 });
 
-// Mockamos rotas básicas simplificadas para validar o comportamento esperado pelos docentes
+// Mockamos as rotas básicas simplificadas para validar o comportamento esperado
 app.get('/posts/search', async (req, res) => {
   const { query } = req.query;
   if (!query) return res.status(400).json({ error: 'É necessário fornecer um termo de busca.' });
@@ -35,7 +34,40 @@ app.post('/posts', async (req, res) => {
   return res.status(201).json(resultado.rows[0]);
 });
 
-// Fechar a conexão com o banco após terminarem os testes para o Jest não ficar travado
+// Executado ANTES de todos os testes para preparar o banco de dados do GitHub Actions
+beforeAll(async () => {
+  // Cria a tabela de usuários se não existir
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS usuarios (
+      id SERIAL PRIMARY KEY,
+      nome VARCHAR(100) NOT NULL,
+      email VARCHAR(100) UNIQUE NOT NULL,
+      senha VARCHAR(255) NOT NULL,
+      tipo VARCHAR(20) DEFAULT 'aluno',
+      criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  // Cria a tabela de posts se não existir
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS posts (
+      id SERIAL PRIMARY KEY,
+      titulo VARCHAR(150) NOT NULL,
+      conteudo TEXT NOT NULL,
+      usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
+      criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  // Garante que exista pelo menos um usuário cadastrado com ID 1 para o teste de posts funcionar
+  await pool.query(`
+    INSERT INTO usuarios (id, nome, email, senha, tipo)
+    VALUES (1, 'Professor Teste', 'professor.teste@escola.com', '123456', 'professor')
+    ON CONFLICT (id) DO NOTHING;
+  `);
+});
+
+// Fechar a conexão com o banco após terminarem os testes
 afterAll(async () => {
   await pool.end();
 });
