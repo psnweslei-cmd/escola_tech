@@ -1,78 +1,117 @@
-# Escola Tech - Back-end de Blogging Dinâmico
+# EscolaTech
 
-Este projeto consiste no desenvolvimento do Back-end reformulado da plataforma **Escola Tech**, focado em prover um espaço centralizado, prático e tecnológico para que professores publiquem suas aulas e alunos consumam conteúdos educativos. A solução foi migrada para uma arquitetura escalável utilizando Node.js com Express e persistência de dados em banco relacional PostgreSQL.
+Plataforma de blog educacional com API em Node.js/Express, PostgreSQL e interface responsiva em React. Estudantes podem explorar, buscar e ler publicações; professores autenticados podem administrar o conteúdo.
 
-## 🛠️ Tecnologias Utilizadas
+## Tecnologias
 
-* **Runtime:** Node.js (v18+)
-* **Framework Web:** Express
-* **Banco de Dados:** PostgreSQL (via contêiner Docker na porta `5433`)
-* **Driver do Banco:** `pg` (Pool de conexões nativo)
-* **Suite de Testes:** Jest e Supertest
-* **Automação CI/CD:** GitHub Actions
+- React com TypeScript (`.tsx`), React Router e Vite
+- Node.js, Express e PostgreSQL
+- Token JWT assinado com HS256 e senha protegida com `scrypt`
+- Jest e Supertest
+- Docker Compose e GitHub Actions
 
----
+## Executar localmente
 
-## 🏗️ Arquitetura do Sistema
+Use Node.js 20 ou superior e tenha PostgreSQL disponível. Na raiz do repositório:
 
-A aplicação segue o padrão arquitetural de microsserviços containerizados para ambiente de desenvolvimento, estruturada de forma modular:
-* `src/server.js`: Ponto de entrada do servidor Express contendo a configuração das rotas REST e conexões SQL puro.
-* `tests/`: Pasta dedicada aos cenários de testes automatizados de integração das rotas críticas.
-* `.github/workflows/`: Configurações de automação que validam a integridade do código e do banco de dados a cada commit.
-
----
-
-
-
-## 🚀 Como Executar o Projeto Localmente
-
-### 1. Clonar o Repositório
 ```bash
-git clone [https://github.com/psnweslei-cmd/escola_tech.git](https://github.com/psnweslei-cmd/escola_tech.git)
-cd escola_tech
+npm install
+docker compose up -d db
+```
 
-## 📖 Guia de Uso da API (Endpoints REST)
+O Compose cria as tabelas automaticamente em um banco novo a partir de `database/init.sql`.
 
-Abaixo estão listadas as rotas implementadas para validação no Thunder Client ou Postman:
+Copie `.env.example` para `.env` e escolha uma chave longa para `JWT_SECRET`. No PowerShell, por exemplo:
 
-### 📄 Módulo de Postagens
+```powershell
+Copy-Item .env.example .env
+```
 
-* **Criar uma Postagem**
-  * **Rota:** `POST /posts`
-  * **Corpo da Requisição (JSON):**
-    ```json
-    {
-      "titulo": "Introdução ao Docker",
-      "conteudo": "Aprenda a containerizar suas aplicações de forma prática.",
-      "usuario_id": 1
-    }
-    ```
-  * **Resposta Esperada:** Status `201 Created`
+Em dois terminais, inicie a API e a interface:
 
-* **Listar Todas as Postagens (Com Join de Usuários)**
-  * **Rota:** `GET /posts`
-  * **Resposta Esperada:** Status `200 OK` (Retorna array de posts contendo o nome do professor/autor).
+```bash
+npm run dev
+npm run dev:web
+```
 
-* **Ler uma Postagem Específica**
-  * **Rota:** `GET /posts/:id` (Substituir pelo ID do post)
-  * **Resposta Esperada:** Status `200 OK`
+A API fica em `http://localhost:3000`; o front-end fica em `http://localhost:5173` e encaminha chamadas à API automaticamente.
 
-* **Editar uma Postagem**
-  * **Rota:** `PUT /posts/:id`
-  * **Corpo da Requisição (JSON):**
-    ```json
-    {
-      "titulo": "Introdução ao Docker - Atualizado",
-      "conteudo": "Conteúdo revisado sobre contêineres."
-    }
-    ```
-  * **Resposta Esperada:** Status `200 OK`
+## Primeiro acesso de professor
 
-* **Excluir uma Postagem**
-  * **Rota:** `DELETE /posts/:id`
-  * **Resposta Esperada:** Status `200 OK`
+Crie uma conta docente usando variáveis de ambiente. Não informe a senha como argumento de linha de comando:
 
-* **Busca Avançada por Palavra-Chave (Requisito Obrigatório)**
-  * **Rota:** `GET /posts/search?query=Docker`
-  * **Funcionamento:** Realiza uma busca parcial e insensível a maiúsculas/minúsculas (`ILIKE`) tanto no título quanto no conteúdo.
-  * **Resposta Esperada:** Status `200 OK`
+```powershell
+$env:TEACHER_NAME = 'Professora Ana'
+$env:TEACHER_EMAIL = 'ana@escola.com'
+$env:TEACHER_PASSWORD = 'escolha-uma-senha-forte'
+npm run create:professor
+```
+
+O comando cria a conta ou atualiza a senha da conta com esse e-mail. O endpoint público `POST /usuarios` cria apenas alunos.
+
+## Executar tudo com Docker
+
+Configure `.env` com `JWT_SECRET` e execute:
+
+```bash
+docker compose up --build
+```
+
+Abra `http://localhost:8080`. O front-end é servido pelo Nginx, que encaminha as rotas da API ao Express. Para cadastrar o professor no banco do Compose:
+
+```powershell
+$env:TEACHER_NAME = 'Professora Ana'
+$env:TEACHER_EMAIL = 'ana@escola.com'
+$env:TEACHER_PASSWORD = 'escolha-uma-senha-forte'
+docker compose run --rm -e TEACHER_NAME -e TEACHER_EMAIL -e TEACHER_PASSWORD api npm run create:professor
+```
+
+As credenciais padrão do banco no Compose são apenas para desenvolvimento. Troque-as antes de qualquer publicação externa.
+
+## Funcionalidades
+
+- Lista de publicações com busca por palavra-chave.
+- Leitura completa de cada publicação.
+- Login docente e rotas de administração protegidas.
+- Painel para criar, editar e excluir publicações.
+- Layout responsivo para celulares e desktops.
+
+## API principal
+
+| Método | Rota | Acesso |
+| --- | --- | --- |
+| `GET` | `/posts` | Público |
+| `GET` | `/posts/search?query=termo` | Público |
+| `GET` | `/posts/:id` | Público |
+| `POST` | `/auth/login` | Público, apenas professor |
+| `POST` | `/posts` | Professor autenticado |
+| `PUT` | `/posts/:id` | Professor autenticado |
+| `DELETE` | `/posts/:id` | Professor autenticado |
+| `POST` | `/usuarios` | Público, cria aluno |
+
+As rotas protegidas recebem `Authorization: Bearer <token>`. O servidor define a autoria do novo post a partir do token.
+
+## Testes, tipos e build
+
+```bash
+npm test
+npm run test:web
+npm run typecheck:web
+npm run build:web
+```
+
+Os testes da API simulam o PostgreSQL, e os testes do front-end simulam as respostas HTTP; nenhuma suíte exige um banco ativo. O workflow do GitHub Actions executa ambas e valida o build.
+
+Veja a [documentação do front-end](docs/front-end.md) e o [roteiro para a apresentação em vídeo](docs/roteiro-demo.md).
+
+## Estrutura
+
+```text
+src/server.js            API Express e conexão PostgreSQL
+web/                     aplicação React
+tests/                   testes da API
+scripts/                 utilitários administrativos
+Dockerfile.api           imagem do back-end
+Dockerfile.web           build e imagem Nginx do front-end
+docker-compose.yml       banco, API e interface
+```

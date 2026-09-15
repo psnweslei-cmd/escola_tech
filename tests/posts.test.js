@@ -1,109 +1,53 @@
+const mockQuery = jest.fn();
 const request = require('supertest');
-const express = require('express');
-const { Pool } = require('pg');
 
-const app = express();
-app.use(express.json());
+jest.mock('pg', () => ({ Pool: jest.fn(() => ({ query: mockQuery, end: jest.fn() })) }));
 
-const pool = new Pool({
-  user: 'admin',
-  host: 'localhost',
-  database: 'escolatech_db',
-  password: 'senha123',
-  port: 5433,
-});
+const { app, signToken } = require('../src/server');
 
-// Mockamos as rotas básicas simplificadas para validar o comportamento esperado
-app.get('/posts/search', async (req, res) => {
-  const { query } = req.query;
-  if (!query) return res.status(400).json({ error: 'É necessário fornecer um termo de busca.' });
-  
-  const resultado = await pool.query(
-    'SELECT p.id, p.titulo, p.conteudo FROM posts p WHERE p.titulo ILIKE $1 OR p.conteudo ILIKE $1',
-    [`%${query}%`]
-  );
-  return res.json(resultado.rows);
-});
+describe('API de postagens', () => {
+  beforeEach(() => mockQuery.mockReset());
 
-app.post('/posts', async (req, res) => {
-  const { titulo, conteudo, usuario_id } = req.body;
-  const resultado = await pool.query(
-    'INSERT INTO posts (titulo, conteudo, usuario_id) VALUES ($1, $2, $3) RETURNING *',
-    [titulo, conteudo, usuario_id]
-  );
-  return res.status(201).json(resultado.rows[0]);
-});
+  it('lista posts recentes', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 1, titulo: 'Introdução ao React', autor: 'Professora Ana' }] });
+    const response = await request(app).get('/posts');
+    expect(response.statusCode).toBe(200);
+    expect(response.body[0]).toMatchObject({ id: 1, titulo: 'Introdução ao React' });
+  });
 
-// Executado ANTES de todos os testes para preparar o banco de dados do GitHub Actions
-beforeAll(async () => {
-  // Cria a tabela de usuários se não existir
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS usuarios (
-      id SERIAL PRIMARY KEY,
-      nome VARCHAR(100) NOT NULL,
-      email VARCHAR(100) UNIQUE NOT NULL,
-      senha VARCHAR(255) NOT NULL,
-      tipo VARCHAR(20) DEFAULT 'aluno',
-      criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
+  it('busca posts por palavra-chave', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 2, titulo: 'Aprendendo Docker' }] });
+    const response = await request(app).get('/posts/search?query=Docker');
+    expect(response.statusCode).toBe(200);
+    expect(response.body[0].titulo).toContain('Docker');
+    expect(mockQuery.mock.calls[0][1]).toEqual(['%Docker%']);
+  });
 
-  // Cria a tabela de posts se não existir
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS posts (
-      id SERIAL PRIMARY KEY,
-      titulo VARCHAR(150) NOT NULL,
-      conteudo TEXT NOT NULL,
-      usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
-      criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
+  it('retorna erro 400 para uma busca vazia', async () => {
+    const response = await request(app).get('/posts/search');
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toHaveProperty('error');
+  });
 
-  // Garante que exista pelo menos um usuário cadastrado com ID 1 para o teste de posts funcionar
-  await pool.query(`
-    INSERT INTO usuarios (id, nome, email, senha, tipo)
-    VALUES (1, 'Professor Teste', 'professor.teste@escola.com', '123456', 'professor')
-    ON CONFLICT (id) DO NOTHING;
-  `);
-});
-
-// Fechar a conexão com o banco após terminarem os testes
-afterAll(async () => {
-  await pool.end();
-});
-
-// Bloco de Testes Automatizados exigidos pela Pos Tech
-describe('Testes Unitários do Módulo de Posts - Tech Challenge', () => {
-  
-  it('Deve criar um novo post com sucesso (POST /posts)', async () => {
-    const novoPost = {
-      titulo: 'Post de Teste do Jest',
-      conteudo: 'Validando a criação automatizada de postagens.',
-      usuario_id: 1
-    };
-
-    const resposta = await request(app)
+  it('cria um post usando a identidade do professor autenticado', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 3, titulo: 'Primeira aula', usuario_id: 12 }] });
+    const token = signToken({ sub: 12, tipo: 'professor', exp: Math.floor(Date.now() / 1000) + 60 });
+    const response = await request(app)
       .post('/posts')
-      .send(novoPost);
-
-    expect(resposta.statusCode).toBe(201);
-    expect(resposta.body).toHaveProperty('id');
-    expect(resposta.body.titulo).toBe(novoPost.titulo);
+      .set('Authorization', `Bearer ${token}`)
+      .send({ titulo: 'Primeira aula', conteudo: 'Conteúdo', usuario_id: 999 });
+    expect(response.statusCode).toBe(201);
+    expect(mockQuery.mock.calls[0][1]).toEqual(['Primeira aula', 'Conteúdo', null, null, 12]);
   });
 
-  it('Deve buscar posts por palavra-chave com sucesso (GET /posts/search)', async () => {
-    const resposta = await request(app)
-      .get('/posts/search?query=Jest');
-
-    expect(resposta.statusCode).toBe(200);
-    expect(Array.isArray(resposta.body)).toBe(true);
-  });
-
-  it('Deve retornar erro 400 se buscar sem passar nenhuma palavra-chave', async () => {
-    const resposta = await request(app)
-      .get('/posts/search');
-
-    expect(resposta.statusCode).toBe(400);
-    expect(resposta.body).toHaveProperty('error');
+  it('cria um post com imagem enviada pelo editor', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [{ id: 4, titulo: 'Aula ilustrada', imagem_url: 'data:image/png;base64,abc' }] });
+    const token = signToken({ sub: 12, tipo: 'professor', exp: Math.floor(Date.now() / 1000) + 60 });
+    const response = await request(app)
+      .post('/posts')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ titulo: 'Aula ilustrada', conteudo: 'Conteúdo', imagem_url: 'data:image/png;base64,abc', imagem_alt: 'Ilustração da aula' });
+    expect(response.statusCode).toBe(201);
+    expect(mockQuery.mock.calls[0][1]).toEqual(['Aula ilustrada', 'Conteúdo', 'data:image/png;base64,abc', 'Ilustração da aula', 12]);
   });
 });
